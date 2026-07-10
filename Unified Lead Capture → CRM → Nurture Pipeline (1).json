@@ -1,0 +1,830 @@
+{
+  "name": "Unified Lead Capture → CRM → Nurture Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "amount": 4,
+        "unit": "days"
+      },
+      "id": "91683900-c2d1-4ad7-b0e1-ccccf7d9d15f",
+      "name": "Wait 4 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2064,
+        592
+      ],
+      "webhookId": "1eecbb1d-5383-4a48-b575-7444aee21255"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$json.email}}",
+        "subject": "A special offer for {{$json.company}}",
+        "message": "=Hi {{$json.name}},\n\nAs a thank you for your interest, we'd like to offer you an exclusive deal this week. Let us know if you'd like details — happy to tailor it to what {{$json.company}} needs.\n\nBest,\nThe Team",
+        "options": {}
+      },
+      "id": "562576f5-36bb-40c7-bcc1-80c4048568a1",
+      "name": "Send Offer Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2288,
+        592
+      ],
+      "webhookId": "cc16976a-92f1-4c48-8182-0b9284e00dec",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eQk5vQkBJUN2dn11",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "website-lead",
+        "options": {}
+      },
+      "id": "f45ba46c-8270-4735-a09a-76ff81f9d810",
+      "name": "Website Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        368
+      ],
+      "webhookId": "website-lead-webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "linkedin-lead",
+        "options": {}
+      },
+      "id": "aa234cb5-c897-422c-beb2-f43b96214336",
+      "name": "LinkedIn Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        592
+      ],
+      "webhookId": "linkedin-lead-webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-lead",
+        "options": {}
+      },
+      "id": "05a454d6-8764-493b-8e11-8ca8531e6a15",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        816
+      ],
+      "webhookId": "whatsapp-lead-webhook"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\n\nreturn {\n  json: {\n    name: body.name || body.full_name || '',\n    email: body.email || '',\n    phone: body.phone || body.phone_number || '',\n    company: body.company || '',\n    company_size: body.company_size || body.employees || 'unknown',\n    message: body.message || '',\n    source: 'Website Form',\n    engagement_signal: 'form_submission',\n    received_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "24746326-dee2-4ca8-9c60-7ea9553832eb",
+      "name": "Normalize Website Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json.body || $input.item.json;\n\nreturn {\n  json: {\n    name: `${d['First Name'] || d.first_name || ''} ${d['Last Name'] || d.last_name || ''}`.trim(),\n    email: d['Email Address'] || d.email || '',\n    phone: d['Phone Number'] || d.phone || '',\n    company: d['Company Name'] || d.company || '',\n    company_size: d['Company Size'] || 'unknown',\n    message: d['Job Title'] || '',\n    source: 'LinkedIn Lead Gen',\n    engagement_signal: 'linkedin_form',\n    received_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "7714e409-f828-40f3-8c2c-6e247657a003",
+      "name": "Normalize LinkedIn Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst entry = body.entry && body.entry[0];\nconst change = entry && entry.changes && entry.changes[0] && entry.changes[0].value;\nconst msg = change && change.messages && change.messages[0];\nconst contact = change && change.contacts && change.contacts[0];\n\nreturn {\n  json: {\n    name: (contact && contact.profile && contact.profile.name) || 'WhatsApp Lead',\n    email: '',\n    phone: (msg && msg.from) || '',\n    company: '',\n    company_size: 'unknown',\n    message: (msg && msg.text && msg.text.body) || '',\n    source: 'WhatsApp',\n    engagement_signal: 'whatsapp_message',\n    received_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "b3ddde1d-6415-41dc-b12b-cac82e6a72a4",
+      "name": "Normalize WhatsApp Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\nlet score = 0;\n\n// Company size scoring\nconst sizeMap = { '1-10': 5, '11-50': 15, '51-200': 25, '201-500': 35, '500+': 40, 'unknown': 10 };\nscore += sizeMap[item.company_size] ?? 10;\n\n// Source scoring\nconst sourceMap = { 'Website Form': 25, 'LinkedIn Lead Gen': 30, 'WhatsApp': 20 };\nscore += sourceMap[item.source] ?? 10;\n\n// Engagement scoring\nif (item.message && item.message.length > 20) score += 15;\nif (item.email) score += 10;\nif (item.phone) score += 10;\n\nscore = Math.min(score, 100);\n\nlet lead_temperature = 'cold';\nif (score >= 70) lead_temperature = 'hot';\nelse if (score >= 40) lead_temperature = 'warm';\n\nreturn {\n  json: {\n    ...item,\n    lead_score: score,\n    lead_temperature\n  }\n};"
+      },
+      "id": "9f9dc383-480c-458a-9cd0-8b89ddd8190d",
+      "name": "Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{$json.email}}",
+        "additionalFields": {
+          "companyName": "={{$json.company}}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "lead_source",
+                "value": "={{$json.source}}"
+              }
+            ]
+          },
+          "firstName": "={{$json.name.split(' ')[0]}}",
+          "lastName": "={{$json.name.split(' ').slice(1).join(' ')}}",
+          "phoneNumber": "={{$json.phone}}"
+        },
+        "options": {}
+      },
+      "id": "05c78ac0-832b-4152-bdc4-69f1d3c4138b",
+      "name": "Add to HubSpot",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [
+        560,
+        448
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "dspihtiyyrtcCVql",
+          "name": "HubSpot OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appA3WFW0sgtBO7nf",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblIAcIgdkNwTTlsT",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{$json.name}}",
+            "Email": "={{$json.email}}",
+            "Phone": "={{$json.phone}}",
+            "Company": "={{$json.company}}",
+            "Source": "={{$json.source}}",
+            "Score": "={{$json.lead_score}}",
+            "Temperature": "={{$json.lead_temperature}}",
+            "Company size": "={{$json.company_size}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Company size",
+              "displayName": "Company size",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Temperature",
+              "displayName": "Temperature",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c5472ade-164e-4c18-8830-e8e8255d29e4",
+      "name": "Add to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        560,
+        704
+      ],
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "VkTHg7FnrbinZzQS",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-hot",
+              "leftValue": "={{$json.lead_temperature}}",
+              "rightValue": "hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3e0feb6d-66db-4114-b424-c2d2f1fc5b47",
+      "name": "Is Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        848,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#hot-leads",
+          "mode": "name"
+        },
+        "text": "=🔥 Hot lead: *{{$json.name}}* from {{$json.company}} (score {{$json.lead_score}})\nSource: {{$json.source}}\nEmail: {{$json.email}}  Phone: {{$json.phone}}\nMessage: {{$json.message}}",
+        "otherOptions": {}
+      },
+      "id": "a1efa7b8-033c-46ed-888a-1cb145aa0c6e",
+      "name": "Slack Alert - Hot Lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1088,
+        448
+      ],
+      "webhookId": "46b3b2f4-5976-4922-bc1b-c6b61a21bbef",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "lWse66YfeVIgCg5i",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$json.email}}",
+        "subject": "=Welcome, {{$json.name}}! Great to connect",
+        "message": "=Hi {{$json.name}},\n\nThanks for reaching out through {{$json.source}}. We'll be in touch shortly with next steps — in the meantime, feel free to reply here with any questions.\n\nTalk soon,\nThe Team",
+        "options": {}
+      },
+      "id": "6d397898-3983-434a-b352-707e97f32f7d",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1088,
+        768
+      ],
+      "webhookId": "b0351c63-fdf5-4a98-ba40-66097d89bd9f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eQk5vQkBJUN2dn11",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/YOUR_PHONE_NUMBER_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: \"whatsapp\", to: $json.phone, type: \"text\", text: { body: `Hi ${$json.name}, thanks for reaching out! We'll follow up shortly.` } }) }}",
+        "options": {}
+      },
+      "id": "28bf29aa-39f5-4bee-8aa7-872e7ed1e164",
+      "name": "Send Welcome WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1088,
+        928
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "swy52hIXphOzucuM",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "id": "a23ccec2-c379-4b53-9079-68ade3b20f01",
+      "name": "Wait 3 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1296,
+        768
+      ],
+      "webhookId": "8ee9d2b4-a500-4658-be80-924276965014"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Score Lead').item.json.email }}",
+        "subject": "Just checking in, {{$json.name}}",
+        "message": "=Hi {{ $('Score Lead').item.json.name }},\n\nWanted to follow up and see if you had any questions about {{$json.company ? 'what we discussed for ' + $json.company : 'getting started'}}. Happy to jump on a quick call whenever works for you.\n\nBest,\nThe Team",
+        "options": {}
+      },
+      "id": "c77d2021-e38c-4742-a37b-39d9ff601e4a",
+      "name": "Send Follow-up Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1520,
+        768
+      ],
+      "webhookId": "38707b78-cb72-445f-936e-5640b894040e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eQk5vQkBJUN2dn11",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "29a755c5-43d5-4f9c-bce7-aec3d0ae91eb",
+      "name": "Weekly Report Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -144,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {}
+      },
+      "id": "befe9f30-e589-4a7f-9374-6fadb2f2b9c7",
+      "name": "Get Weekly Leads from HubSpot",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [
+        80,
+        1248
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "dspihtiyyrtcCVql",
+          "name": "HubSpot OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst leads = items.map(i => i.json);\n\nconst bySource = {};\nconst byTemp = {};\n\nfor (const lead of leads) {\n  const source = lead.lead_source || lead.source || 'Unknown';\n  const temp = lead.hs_lead_status || lead.lead_temperature || 'unknown';\n  bySource[source] = (bySource[source] || 0) + 1;\n  byTemp[temp] = (byTemp[temp] || 0) + 1;\n}\n\nconst summaryLines = [\n  `Total leads this week: ${leads.length}`,\n  '',\n  'By source:',\n  ...Object.entries(bySource).map(([k, v]) => `  - ${k}: ${v}`),\n  '',\n  'By temperature:',\n  ...Object.entries(byTemp).map(([k, v]) => `  - ${k}: ${v}`)\n];\n\nreturn {\n  json: {\n    total: leads.length,\n    by_source: bySource,\n    by_temperature: byTemp,\n    summary_text: summaryLines.join('\\n')\n  }\n};"
+      },
+      "id": "6ff434d1-a3fb-4880-8ab4-e436d7707c07",
+      "name": "Build Report Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "sales.manager@yourcompany.com",
+        "subject": "Weekly Lead Pipeline Report",
+        "message": "={{$json.summary_text}}",
+        "options": {}
+      },
+      "id": "5194c522-dcd6-40e2-93c0-b923c5a2ba77",
+      "name": "Send Weekly Report Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        528,
+        1152
+      ],
+      "webhookId": "7fe7fd30-6d2a-4f22-9f4b-dbcc070a5673",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eQk5vQkBJUN2dn11",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#sales-pipeline"
+        },
+        "text": "=📊 Weekly Lead Pipeline Report\n{{$json.summary_text}}",
+        "otherOptions": {}
+      },
+      "id": "47b3c0f7-ee6b-4aa9-a5fe-ce1f6baa465f",
+      "name": "Send Weekly Report Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        1344
+      ],
+      "webhookId": "2eceae1b-5745-4b22-ba43-1cdef7aef681",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "lWse66YfeVIgCg5i",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 4
+      },
+      "id": "22d1f209-4d57-4d94-bd2e-f897472c42d5",
+      "name": "Wait 4 Days1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1744,
+        768
+      ],
+      "webhookId": "b14b285e-886e-43ce-b42f-fbd4c7c0499e"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Score Lead').item.json.email }}",
+        "subject": "A special offer for {{$json.company}}",
+        "message": "=Hi {{ $('Score Lead').item.json.name }},\n\nAs a thank you for your interest, we'd like to offer you an exclusive deal this week. Let us know if you'd like details — happy to tailor it to what {{$('Score Lead').item.json.company}} needs.\n\nBest,\nThe Team",
+        "options": {}
+      },
+      "id": "5b8df37a-f8e6-49b2-924a-76275ca987ce",
+      "name": "Send Offer Email1",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1968,
+        768
+      ],
+      "webhookId": "dcec5786-af70-47b7-a43a-5f46bd6b422e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eQk5vQkBJUN2dn11",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Wait 4 Days": {
+      "main": [
+        [
+          {
+            "node": "Send Offer Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Website Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Website Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize LinkedIn Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize WhatsApp Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Website Lead": {
+      "main": [
+        [
+          {
+            "node": "Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize LinkedIn Lead": {
+      "main": [
+        [
+          {
+            "node": "Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize WhatsApp Lead": {
+      "main": [
+        [
+          {
+            "node": "Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Lead": {
+      "main": [
+        [
+          {
+            "node": "Add to HubSpot",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Add to Airtable",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Hot Lead?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Welcome WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Hot Lead?": {
+      "main": [
+        [
+          {
+            "node": "Slack Alert - Hot Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Welcome Email": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Days": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up Email": {
+      "main": [
+        [
+          {
+            "node": "Wait 4 Days1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Report Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get Weekly Leads from HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weekly Leads from HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Build Report Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Report Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Weekly Report Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Weekly Report Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 4 Days1": {
+      "main": [
+        [
+          {
+            "node": "Send Offer Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "02c4ac34-e7db-4557-ad5e-22f18ea09d42",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "801765782b9c4b4b9d13dda71db802a669ec83c1cd978bf59ca499d5c74c061e"
+  },
+  "nodeGroups": [],
+  "id": "hvpRg7ruIEcOwoY3",
+  "tags": []
+}
